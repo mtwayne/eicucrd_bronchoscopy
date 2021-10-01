@@ -1,0 +1,1116 @@
+## ---------------------------
+##
+## Purpose of script: 
+##   Importing, cleaning, and analyzing data from the eICU database
+##   https://eicu-crd.mit.edu/
+##
+## Author: Daniel Molling 
+##
+## Last modified: 2021-04-22
+##
+## Email: daniel.molling@gmail.com
+##
+## ---------------------------
+## Note, exploratory analysis has been left in this file, but is mostly commented out
+##
+## ---------------------------
+
+library(tidyverse)
+library(Hmisc)
+library(haven)
+apachePatientResult = read_csv("data/eicu-collaborative-research-database-2.0/apachePatientResult.csv.gz")
+apacheApsVar = read_csv("data/eicu-collaborative-research-database-2.0/apacheApsVar.csv.gz")
+note = read_csv("data/eicu-collaborative-research-database-2.0/note.csv.gz")
+patient = read_csv("data/eicu-collaborative-research-database-2.0/patient.csv.gz")
+hospital = read_csv("data/eicu-collaborative-research-database-2.0/hospital.csv.gz")
+respiratoryCare = read_csv("data/eicu-collaborative-research-database-2.0/respiratoryCare.csv.gz")
+note = read_csv("data/eicu-collaborative-research-database-2.0/note.csv.gz")
+treatment = read_csv("data/eicu-collaborative-research-database-2.0/treatment.csv.gz")
+microLab =  read_csv("data/eicu-collaborative-research-database-2.0/microLab.csv.gz")
+carePlanGeneral =  read_csv("data/eicu-collaborative-research-database-2.0/carePlanGeneral.csv.gz")
+diagnosis =  read_csv("data/eicu-collaborative-research-database-2.0/diagnosis.csv.gz")
+physicalExam =  read_csv("data/eicu-collaborative-research-database-2.0/physicalExam.csv.gz")
+admissionDx =  read_csv("data/eicu-collaborative-research-database-2.0/admissionDx.csv.gz")
+pastHistory =  read_csv("data/eicu-collaborative-research-database-2.0/pastHistory.csv.gz")
+
+# memory.limit(16194*3)
+# Note: the nurseCharting and respiratoryCharting tables are very large--here we load pre-filtered
+# datasets but starting from a fresh analysis you will need to load them in and run cleaning steps
+# that are commented out later in this script
+# nurseCharting =  read_csv("data/eicu-collaborative-research-database-2.0/nurseCharting.csv.gz")
+nurseCharting_imv = read_csv("data/nurseCharting_imv.csv")
+#respiratoryCharting =  read_csv("data/eicu-collaborative-research-database-2.0/respiratoryCharting.csv.gz")
+respiratoryCharting_imv = read_csv("data/respiratoryCharting_imv.csv")
+
+patient = patient %>% 
+  mutate(
+    #setting ages recorded as "> 89" to 90 to allow for calculations and filtering
+    age_numeric = if_else(age == "> 89", "90", age) %>% as.numeric()
+  )
+# patient %>% count(age_numeric >= 18)
+
+ventdays = apachePatientResult %>% distinct(patientunitstayid, actualventdays)
+
+patient_filtered = patient %>% filter(age_numeric >= 18)
+
+
+patient_filtered = patient_filtered %>%
+  left_join(apacheApsVar , by = "patientunitstayid")
+
+patient_filtered = patient_filtered %>%
+  left_join(ventdays , by = "patientunitstayid")
+# patient_filtered %>% count(actualventdays >= 1)
+# 
+# patient_filtered %>% count(intubated)
+# patient_filtered %>% count(vent)
+
+# patient_filtered %>% 
+#   filter(hospital_count_ventilation_hosps < 10) %>%
+#   filter(vent==1) %>%
+#   count(hospitalid) %>%
+#   nrow()
+# 
+# patient_filtered %>% 
+#   filter(hospital_count_ventilation_hosps < 10) %>%
+#   filter(vent==1) %>%
+#   nrow()
+
+#patient_filtered = patient_filtered %>% filter(hospital_count_ventilation_hosps >= 10)
+#patient_filtered %>% count(vent)
+#patient_filtered = patient_filtered %>% filter(vent == 1)
+
+##### Identifying Invasive Mechanical Ventilation #####
+# patient_filtered %>% 
+#   count(vent, actualventdays > 0) %>%
+#   write_csv("vent_counts.csv")
+
+### Exploring data from carePlanGeneral table ###
+
+carePlanGeneral_filtered = carePlanGeneral %>%
+  filter(patientunitstayid %in% patient_filtered$patientunitstayid) 
+
+# View(carePlanGeneral_filtered %>% 
+#   count(cplgroup == "Airway",
+#         cplitemvalue %>% str_detect(
+#         "oral ETT|trach-acute|trach-chronic|nasal ETT")
+#         ))
+
+# carePlanGeneral_filtered %>% 
+#   filter(cplitemvalue %>% str_detect(
+#     "oral ETT|trach-acute|trach-chronic|nasal ETT")) %>%
+#   View()
+# 
+# carePlanGeneral_filtered %>% 
+#   filter(cplitemvalue %>% str_detect(
+#     "intubated//oral ETT|intubated//trach-acute|intubated//trach-chronic|intubated//nasal ETT")) %>%
+#   View()
+
+# carePlanGeneral_filtered %>% count(cplitemvalue) %>% View()
+
+### Exploring data from nurseCharting table ###
+
+#commented out because loading in the nurseCharting table takes a very long time
+# nurseCharting = nurseCharting %>%
+#   mutate(
+#     nursingchartvalue_lowercase = tolower(nursingchartvalue),
+#     imv_nurseCharting = if_else(
+#       nursingchartvalue_lowercase %in% c(
+#         'plateau pressure','postion at lip','position at lip','pressure control') |
+#         str_detect(nursingchartvalue_lowercase, "set vt|rsbi|tube|ett|endotracheal|tracheostomy|reintubation|assist controlled|volume controlled|pressure controlled" ), 1, 0)
+#     )
+# #including sputum seems odd to Max, set vt could be either imv or non-invasive, tube also very generic
+# #removed "sputum", "trach collar" and "tracheal suctioning" out of this
+# 
+# nurseCharting_imv = nurseCharting %>%
+#   filter(imv_nurseCharting == 1) %>%
+#   distinct(patientunitstayid, imv_nurseCharting, .keep_all = T)
+#nurseCharting_imv %>% write_csv("data/nurseCharting_imv.csv")
+#
+#glimpse(nurseCharting_imv)
+
+### Through respiratory charting ###
+# respiratoryCharting = respiratoryCharting %>%
+#   mutate(
+#     respchartvalue_lower = tolower(respchartvalue),
+#     respchartvaluelabel_lower = tolower(respchartvaluelabel),
+#     imv_respiratoryCharting = if_else(
+#       respchartvaluelabel_lower %in% c(
+#         'plateau pressure','postion at lip','position at lip','pressure control') |
+#         str_detect(respchartvaluelabel_lower, "set vt|rsbi|tube|ett|endotracheal|tracheostomy|reintubation|assist controlled|volume controlled|pressure controlled" ) |
+#         (respchartvaluelabel_lower %in% c('o2 device',
+#                                           'respiratory device',
+#                                           'ventilator type',
+#                                           'oxygen delivery method') &
+#            (respchartvaluelabel_lower %in% c(
+#              'plateau pressure','postion at lip','position at lip','pressure control') |
+#            str_detect(respchartvalue_lower, "set vt|rsbi|tube|ett|endotracheal|tracheostomy|reintubation|assist controlled|volume controlled|pressure controlled" ))
+#            )
+#         , 1, 0)
+#     )
+# 
+# respiratoryCharting_imv = respiratoryCharting %>%
+#   filter(imv_respiratoryCharting == 1) %>%
+#   distinct(patientunitstayid, imv_respiratoryCharting, .keep_all = T)
+# respiratoryCharting_imv %>% write_csv("data/respiratoryCharting_imv.csv")
+
+### Combining IMV identification ###
+imv_identification = patient_filtered %>%
+  #apacheApsVar
+  filter(vent == 1 | actualventdays > 0) %>% 
+  distinct(patientunitstayid, vent, actualventdays) %>%
+  #identification through carePlanGeneral table
+  full_join(
+    carePlanGeneral_filtered %>%
+      filter(cplitemvalue %in% c( "Ventilated - rapid wean/extubation", 
+                                  "Ventilated - with no daily extubation trial",
+                                  "Ventilated - chronic dependency",
+                                  "Ventilated - with daily extubation evaluation")) %>%
+        # cplitemvalue %>% 
+        #        str_detect("oral ETT|trach-acute|trach-chronic|nasal ETT")) %>% 
+      mutate(imv_carePlanGeneral = 1) %>% 
+      distinct(patientunitstayid, imv_carePlanGeneral)
+  ) %>%
+  #identification through respiratoryCare table
+  full_join(
+    #assuming every hospitalization with a recorded value in the respiratoryCare
+    #table received IMV
+    respiratoryCare %>% 
+      filter(patientunitstayid %in% patient_filtered$patientunitstayid) %>%
+      mutate(imv_respiratoryCare = 1) %>%
+      distinct(patientunitstayid, imv_respiratoryCare) 
+  ) %>%
+  #identification through physicalExam table
+  full_join(
+    physicalExam %>% 
+      filter(patientunitstayid %in% patient_filtered$patientunitstayid) %>%
+      filter(str_detect(physicalexamvalue, 
+                        "Vent|ventilate|intubate|PEEP")) %>%
+      mutate(imv_physicalExam = 1) %>%
+      distinct(patientunitstayid, imv_physicalExam) 
+  ) %>%
+  #identification through treatment table
+  full_join(
+    treatment %>% 
+      filter(patientunitstayid %in% patient_filtered$patientunitstayid) %>%
+      filter(str_detect(treatmentstring, "mechanical vent"),
+             !str_detect(treatmentstring, "non-invasive")) %>%
+      mutate(imv_treatment = 1) %>%
+      distinct(patientunitstayid, imv_treatment) 
+  ) %>%
+  #identification through nurseCharting table
+  full_join(
+    nurseCharting_imv %>%
+      filter(patientunitstayid %in% patient_filtered$patientunitstayid) %>%
+      select(patientunitstayid, imv_nurseCharting)
+  ) %>%
+  #identification through respiratoryCharting table
+  full_join(
+    respiratoryCharting_imv %>%
+      filter(patientunitstayid %in% patient_filtered$patientunitstayid) %>%
+      select(patientunitstayid, imv_respiratoryCharting)
+  )
+
+imv_identification %>% count(imv_carePlanGeneral, vent, actualventdays > 0,
+                             imv_respiratoryCare, imv_physicalExam,
+                             imv_treatment, imv_nurseCharting, imv_respiratoryCharting) %>%
+  mutate_all(~ as.numeric(.)) %>% replace(is.na(.), 0) %>% 
+  write_csv("imv_identification_counts_v3.csv")
+
+imv_identification = imv_identification %>%
+  mutate(
+    actualventdays_positive = if_else(actualventdays > 0, 1, 0, missing = 0),
+  ) 
+
+#If at least 3 sources identify the patient as having received IMV, set this variable to 1
+imv_identification$imv_3ways = if_else(rowSums(imv_identification[, c("imv_carePlanGeneral", "vent", 
+                                               "actualventdays_positive", "imv_respiratoryCare",
+                                               "imv_physicalExam", "imv_treatment",
+                                               "imv_nurseCharting", 
+                                               "imv_respiratoryCharting")], na.rm = T) >=3,
+                                       1, 0, missing = 0) 
+    
+
+patient_filtered = patient_filtered %>% left_join(
+  imv_identification %>% select(patientunitstayid, imv_3ways)
+)
+
+#calculating the number of IMV hospitalizations per hospital
+patient_filtered = patient_filtered %>%
+  group_by(hospitalid) %>%
+  mutate(hospital_count_imv_hosps = sum(imv_3ways == 1, na.rm = T)) %>%
+  ungroup()
+
+# patient_filtered %>% filter(imv_3ways == 1) %>% count(hospital_count_imv_hosps >= 25)
+
+# patient_filtered %>% filter(imv_3ways == 1) %>% 
+#   summarise( n_hosps = n_distinct(hospitalid))
+
+
+# patient_filtered %>% 
+#   filter(hospital_count_imv_hosps >= 25) %>%
+#   count(hospitalid) %>%
+#   nrow()
+
+##### identifying broncoscopy #####
+
+##### broncoscopy through treatment string ##### 
+treatment_filtered = treatment %>% 
+  filter(patientunitstayid %in% patient_filtered$patientunitstayid) %>%
+  filter(treatmentoffset > 0)
+
+treatment_filtered %>%
+  filter(str_detect(treatmentstring, "\\|bronchoscopy")) %>%
+  count(treatmentstring) %>%
+  write_csv("bronc_treatment_counts.csv")
+
+# treatment_filtered %>%
+#   filter(str_detect(treatmentstring, "\\|bronchoscopy")) %>%
+#   summarise(unique_hosps = n_distinct(patientunitstayid))
+# 2,168 hosps before filtering for IMV
+
+##### broncoscopy through note tab #####
+note_filtered = note %>% 
+  filter(patientunitstayid %in% patient_filtered$patientunitstayid) 
+
+# note_filtered %>% filter(notetype == "Bronchoscopy") %>% 
+#   summarise(unique_hosps = n_distinct(patientunitstayid))
+# 247 unique hospitalizations before filtering for IMV
+
+#note %>% filter(str_detect(notetext, "bronc")) %>% View()
+#note %>% count(str_detect(notetext, "bronc"), notetype == "Bronchoscopy")
+# note %>% filter(notetype == "Intubation") %>% 
+#   count(str_detect(notepath, "bronc"), str_detect(notetext, "bronc"))
+# note %>%  filter(notetype == "Intubation") %>% 
+#   count(notetext) %>% View()
+# note %>% filter(notetype == "Intubation") %>% 
+#   count(notepath, notevalue) %>%
+#   View() 
+##### broncoscopy through microlab culture site #####
+microLab_filtered = microLab %>% 
+  filter(patientunitstayid %in% patient_filtered$patientunitstayid) 
+
+microLab_filtered %>% filter(culturesite == "Bronchial Lavage") %>% 
+  summarise(unique_hosps = n_distinct(patientunitstayid))
+#179 hosps
+
+
+##### broncoscopy  through carePlanGeneral #####
+# View(carePlanGeneral %>% count(cplgroup))
+# View(carePlanGeneral %>% count(cplitemvalue))
+# 
+# View(carePlanGeneral %>% count(cplitemvalue == "Bedside bronchoscopy",
+#                                cplgroup == "Planned Procedures"))
+
+##### broncoscopy through diagnosis table #####
+diagnosis_filtered = diagnosis %>%
+  filter(patientunitstayid %in% patient_filtered$patientunitstayid) 
+# 
+# View(diagnosis_filtered %>% 
+#        filter(diagnosisstring %>% str_detect("bronchoscopy")) %>%
+#        count(diagnosisstring))
+# 
+# View(diagnosis_filtered %>% 
+#        count(diagnosisstring %>% str_detect("bronchoscopy"), 
+#              icd9code %>% str_detect("786.3|998.11") ) )
+
+##### broncoscopy combined identification #####
+
+bronc_identification = treatment_filtered %>%
+  filter(str_detect(treatmentstring, "\\|bronchoscopy")) %>% 
+  mutate(bronc_treatment = 1) %>% 
+  distinct(patientunitstayid, bronc_treatment) %>%
+  #Identification through note table, notetype
+  full_join(
+    note_filtered %>%
+      filter(notetype == "Bronchoscopy") %>% 
+      mutate(bronc_note = 1) %>% 
+      distinct(patientunitstayid, bronc_note) 
+  ) %>%
+  #Identification through microLab table, culturesite
+  full_join(
+    microLab_filtered %>%
+      filter(culturesite == "Bronchial Lavage") %>% 
+      mutate(bronc_microLab = 1) %>% 
+      distinct(patientunitstayid, bronc_microLab) 
+  ) %>%
+  #Identification through carePlanGeneral table, cplitemvalue and cplgroup
+  full_join(
+    carePlanGeneral_filtered %>% 
+      filter(cplitemvalue == "Bedside bronchoscopy", 
+             cplgroup == "Planned Procedures") %>%
+      mutate(bronc_carePlanGeneral = 1) %>%
+      distinct(patientunitstayid, bronc_carePlanGeneral) 
+  ) %>% 
+  #Identification through diagnosis table, diagnosisstring and icd9code
+  full_join(
+    diagnosis_filtered %>%
+      filter(diagnosisstring %>% str_detect("bronchoscopy"), 
+             icd9code %>% str_detect("786.3|998.11")) %>%
+      mutate(bronc_diagnosis = 1) %>%
+      distinct(patientunitstayid, bronc_diagnosis) 
+  )
+
+bronc_identification %>% count(bronc_treatment, bronc_note, bronc_microLab,
+                               bronc_carePlanGeneral, bronc_diagnosis) %>% #View()
+  write_csv("bronc_identification_counts.csv")
+
+bronc_identification %>% count(bronc_treatment, bronc_note) %>% #View()
+  write_csv("bronc_identification_counts_treatment_note.csv")
+
+#Identifying broncoscopy through either the treatment or note tables, as other
+#sources were less reliable
+bronc_identification = bronc_identification %>%
+  mutate(
+    bronc_2ways = if_else(bronc_treatment == 1 |
+                                            bronc_note == 1,
+                                       1, 0, missing = 0)
+  )
+
+
+patient_filtered = patient_filtered %>% left_join(
+  bronc_identification %>% select(patientunitstayid, bronc_2ways)
+) 
+
+patient_filtered = patient_filtered %>% 
+  left_join(hospital) 
+
+patient_filtered = patient_filtered %>% 
+  left_join(apachePatientResult %>% 
+              filter(apacheversion == "IV") %>%
+              select(patientunitstayid, apachescore,
+                     actualhospitallos, actualhospitalmortality)) 
+patient_filtered = patient_filtered %>%
+  mutate(bronc_2ways = if_else(bronc_2ways == 1, 1, 0, missing = 0) )
+
+### saving analytic dataset ###
+#patient_filtered %>% write_rds("data/patient_filtered.rds")
+#patient_filtered = read_rds("data/patient_filtered.rds")
+patient_filtered %>% write_dta("data/patient_filtered.dta")
+
+#Created a cohort of hospitalizations with IMV at a hospital with at least 25 IMV hospitalizations
+patient_filtered_vent = patient_filtered %>%
+  filter(imv_3ways == 1) %>%
+  filter(hospital_count_imv_hosps >= 25)
+
+
+n_percent = function(x, value = 1) {
+  return(paste0(
+    format(sum(x %in% value, na.rm = T), big.mark = ","), " (",
+    format(round(sum(x %in% value, na.rm = T)/n()*100, digits = 1), nsmall = 1), "%)"))
+}
+median_iqr = function(x) {
+  return(paste0(format(round(median(x, na.rm = T),2), nsmall = 0, big.mark = ","), " (",
+                format(round(quantile(x, probs = .25, na.rm = T), 2), nsmall = 0), "-" ,
+                format(round(quantile(x, probs = .75, na.rm = T),2), nsmall = 0), ")"))
+}
+
+##### Table 1 #####
+patient_filtered_vent %>%
+  group_by(bronc_2ways) %>%
+  summarise(
+    hospitalizations = paste0(
+      format(n(), big.mark = ","), " (",
+      format(round(n()/nrow(patient_filtered_vent)*100, digits = 1), nsmall = 1), "%)"),
+    male = n_percent(gender, "Male"),
+    age = median_iqr(age_numeric),
+    eth = "",
+    white = n_percent(ethnicity, "Caucasian"),
+    black = n_percent(ethnicity, "African American"),
+    hispanic = n_percent(ethnicity, "Hispanic"),
+    other = n_percent(ethnicity, c("Native American", "Other/Unknown", NA)),
+    reg = "",
+    northeast = n_percent(region, "Northeast"),
+    midwest = n_percent(region, "Midwest"),
+    south = n_percent(region, "South"),
+    west = n_percent(region, "West"),
+    hospital_size = "",
+    size_under100 = n_percent(numbedscategory, "<100"),
+    size_100_to_249 = n_percent(numbedscategory, "100 - 249"),
+    size_250_to_499 = n_percent(numbedscategory, "250 - 499"),
+    size_over500 = n_percent(numbedscategory, ">= 500"),
+    teaching_hosp = "",
+    teaching_hosp_yes = n_percent(teachingstatus, TRUE),
+    teaching_hosp_no = n_percent(teachingstatus, FALSE),
+    admi_type = "",
+    operative = "",
+    non_op = "",
+    unit_type = "",
+    med_surg = n_percent(unittype, c("Med-Surg ICU", "CCU-CTICU")),
+    medical = n_percent(unittype, c("Cardiac ICU", "MICU", "Neuro ICU")),
+    surgical = n_percent(unittype, c("CSICU", "CTICU", "SICU")),
+    apache_score = median_iqr(apachescore),
+    los = median_iqr(actualhospitallos),
+    mort = n_percent(actualhospitalmortality, "EXPIRED"),
+  ) %>% 
+  mutate_all(as.character) %>%
+  #rownames_to_column() %>% View()
+  pivot_longer(cols = !contains("bronc_2ways"), names_to = "variable") %>% #View()
+  pivot_wider(names_from = bronc_2ways, values_from = value) %>% #View()
+  bind_cols(
+    patient_filtered_vent %>%
+      summarise(
+        hospitalizations = format(n(), big.mark = ","),
+        male = n_percent(gender, "Male"),
+        age = median_iqr(age_numeric),
+        eth = "",
+        white = n_percent(ethnicity, "Caucasian"),
+        black = n_percent(ethnicity, "African American"),
+        hispanic = n_percent(ethnicity, "Hispanic"),
+        other = n_percent(ethnicity, c("Native American", "Other/Unknown", NA)),
+        reg = "",
+        northeast = n_percent(region, "Northeast"),
+        midwest = n_percent(region, "Midwest"),
+        south = n_percent(region, "South"),
+        west = n_percent(region, "West"),
+        hospital_size = "",
+        size_under100 = n_percent(numbedscategory, "<100"),
+        size_100_to_249 = n_percent(numbedscategory, "100 - 249"),
+        size_250_to_499 = n_percent(numbedscategory, "250 - 499"),
+        size_over500 = n_percent(numbedscategory, ">= 500"),
+        teaching_hosp = "",
+        teaching_hosp_yes = n_percent(teachingstatus, TRUE),
+        teaching_hosp_no = n_percent(teachingstatus, FALSE),
+        admi_type = "",
+        operative = "",
+        non_op = "",
+        unit_type = "",
+        med_surg = n_percent(unittype, c("Med-Surg ICU", "CCU-CTICU")),
+        medical = n_percent(unittype, c("Cardiac ICU", "MICU", "Neuro ICU")),
+        surgical = n_percent(unittype, c("CSICU", "CTICU", "SICU")),
+        apache_score = median_iqr(apachescore),
+        los = median_iqr(actualhospitallos),
+        mort = n_percent(actualhospitalmortality, "EXPIRED"), 
+      ) %>% 
+      mutate_all(as.character) %>%
+      pivot_longer(cols = everything()) %>%
+      select(-name)
+      ) %>% 
+  relocate(variable, all = value, bronch = `1`, no_bronc = `0`) %>% #View()
+  write_csv("tables/table1.csv")
+
+n_percent = function(x, value = 1) {
+  return(paste0(
+    format(sum(x %in% value, na.rm = T), big.mark = ","), " (",
+    format(round(sum(x %in% value, na.rm = T)/n()*100, digits = 1), nsmall = 1), "%)"))
+}
+
+##### Table 2 #####
+patient_filtered_vent %>%
+  group_by(hospitalid) %>%
+  summarise(
+    n_broncoscopy = format(sum(bronc_2ways, na.rm = T), big.mark = ","),
+    n_imv = format(n(), big.mark = ","),
+    percent_broncoscopy = sum(bronc_2ways, na.rm = T)/n()*100,
+    ci_low = binconf(sum(bronc_2ways, na.rm = T), n(), method = "wilson")[2]*100,
+    ci_high = binconf(sum(bronc_2ways, na.rm = T), n(), method = "wilson")[3]*100,
+    teaching_hospital = ifelse(sum(teachingstatus >= 1, na.rm = T), "yes", "no"),
+    hosp_region = first(region)
+  ) %>% arrange(desc(percent_broncoscopy)) %>% #View()
+  write_csv("tables/table2.csv")
+
+##### sensitivity analysis #####
+
+### Primary admission diagnosis = Hemorrhage/hemoptysis, pulmonary (n=370 diagnosis)
+df_hemorrhage_hemoptysis = patient_filtered %>%
+  left_join(
+    admissionDx %>%
+      group_by(patientunitstayid) %>%
+      mutate(
+        admitdxtext_combined = str_c(admitdxtext, collapse = "__"),
+        admissiondxid_combined = str_c(admissiondxid, collapse = ",")
+          ) %>% 
+      ungroup() %>%
+      distinct(patientunitstayid, admissiondxid_combined, admitdxtext_combined) 
+  ) %>%
+  filter(str_detect(admitdxtext_combined, "Hemorrhage/hemoptysis, pulmonary"))
+
+df_hemorrhage_hemoptysis_vent = df_hemorrhage_hemoptysis %>%
+  filter(imv_3ways == 1) %>%
+  filter(hospital_count_imv_hosps >= 25)
+
+nrow(df_hemorrhage_hemoptysis_vent) #144 hospitalizations
+
+#(1) Bronchoscopy rate for these hospitalizations
+#(2) Also calculate rates if: IMV AND Primary admission diagnosis = Hemorrhage/hemoptysis
+df_hemorrhage_hemoptysis %>%
+  summarise(
+    hemorrhage_hemoptysis_n = n(),
+    bronc_rate_hemorrhage_hemoptysis = n_percent(bronc_2ways)
+  ) %>%
+  bind_cols(
+    df_hemorrhage_hemoptysis_vent %>%
+      summarise(
+        hemorrhage_hemoptysis_ventilated_n = n(),
+        bronc_rate_hemorrhage_hemoptysis_ventilated = n_percent(bronc_2ways)
+      ) 
+  ) %>% 
+  write_csv("tables/sensitivity_hemorrhage_hemoptysis.csv")
+
+###2. Received IMV AND had immunocompromised diagnosis/comorbidity 
+
+pastHistory_immunocompromised = 
+  pastHistory %>%
+  filter(
+    pasthistoryvaluetext %in% c(
+      ">= 20 mg prednisone per day or equivalent",
+      "AIDS",
+      "ALL",
+      "AML",
+      "Alkylating agents (bleomycin, cytoxan, cyclophos.)", 
+      "Anthracyclines (adriamycin, daunorubicin)",
+      "BMT within past 12 mos.",
+      "both prednisone and other immunosuppressive medications",
+      "Cis-platinum",
+      "HIV positive",
+      "Hodgkins disease",
+      "chemotherapy within past 6 mos.",
+      "chemotherapy within past mo.",
+      "leukemia - other",
+      "non-Hodgkins lymphoma",
+      "other immunosuppressive medications",
+      "recent steroid use for > 10 days",
+      "s/p heart transplant",
+      "s/p liver transplant",
+      "s/p lung transplant",
+      "s/p renal transplant",
+      "Vincristine"
+    )
+  ) %>%
+  mutate(
+    immunocompromised = 1
+  )
+pastHistory_immunocompromised %>% nrow() #19,940 obs
+pastHistory_immunocompromised %>% 
+  distinct(patientunitstayid, immunocompromised) %>% nrow() #8,776 hospitalizations
+
+# Overall bronc Rate among immunocompromised IMV hosps
+patient_filtered_vent %>%
+  left_join(
+    pastHistory_immunocompromised %>% 
+      distinct(patientunitstayid, immunocompromised)
+  ) %>% 
+  filter(immunocompromised == 1) %>%
+  summarise(
+    immunocompromised_imv_n = n(),
+    overall_bronc_rate = n_percent(bronc_2ways)
+  ) %>%
+ write_csv("tables/sensitivity_immunocompromised_imv_overall.csv")
+
+# bronc Rate by hospital among immunocompromised IMV hosps
+patient_filtered_vent %>%
+  left_join(
+    pastHistory_immunocompromised %>% 
+      distinct(patientunitstayid, immunocompromised)
+  ) %>% 
+  filter(immunocompromised == 1) %>%
+  group_by(hospitalid) %>%
+  summarise(
+    n_broncoscopy = format(sum(bronc_2ways, na.rm = T), big.mark = ","),
+    n_imv = format(n(), big.mark = ","),
+    percent_broncoscopy = sum(bronc_2ways, na.rm = T)/n()*100,
+    ci_low = binconf(sum(bronc_2ways, na.rm = T), n(), method = "wilson")[2]*100,
+    ci_high = binconf(sum(bronc_2ways, na.rm = T), n(), method = "wilson")[3]*100,
+    teaching_hospital = ifelse(sum(teachingstatus >= 1, na.rm = T), "yes", "no"),
+    hosp_region = first(region)
+  ) %>% arrange(desc(percent_broncoscopy)) %>% View()
+  write_csv("tables/sensitivity_immunocompromised_imv_hospital_rates.csv")
+
+
+
+
+************************************************************
+*********************E-ICU BRONCHOSCOPY STATA CODE**********
+************************************************************
+*** https://eicu-crd.mit.edu/
+***
+*** Author: Max Wayne
+***
+*** Last modified: 2021-10-01
+***
+****************************************
+***Create immunosuppressed variable
+****************************************
+
+*1st import the datafile
+import delimited "eicu-collaborative-research-database-2.0\pastHistory.csv"
+
+*next generate dummy variable for immunosuppressed
+*replace if pasthistory text reports immunosuppressed condition
+
+generate immunosuppressed = .
+
+replace immunosuppressed = 1 if pasthistoryvaluetext == ">= 20 mg prednisone per day or equivalent" 
+replace immunosuppressed = 1 if pasthistoryvaluetext == "AIDS"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "ALL" 
+replace immunosuppressed = 1 if pasthistoryvaluetext == "Alkylating agents (bleomycin, cytoxan, cyclophos.)"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "Anthracyclines (adriamycin, daunorubicin)"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "BMT within past 12 mos."
+replace immunosuppressed = 1 if pasthistoryvaluetext == "both prednisone and other immunosuppressive medications"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "Cis-platinum"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "HIV positive"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "Hodgkins disease"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "chemotherapy within past 6 mos."
+replace immunosuppressed = 1 if pasthistoryvaluetext == "chemotherapy within past mo."
+replace immunosuppressed = 1 if pasthistoryvaluetext == "leukemia - other"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "non-Hodgkins lymphoma"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "other immunosuppressive medications"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "recent steroid use for > 10 days"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "s/p heart transplant"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "s/p liver transplant"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "s/p lung transplant"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "s/p renal transplant"
+replace immunosuppressed = 1 if pasthistoryvaluetext == "Vincristine"
+
+bysort patientunitstayid: fillmissing immunosuppressed, with(max)
+
+*Keep only a single value for each hospitalization
+bysort patientunitstayid: keep if _n==_N
+
+*Change missing immunosuppressed value to 0 
+replace immunosuppressed = 0 if immunosuppressed == .
+
+*label the variable
+label var immunosuppressed "Immunosuppressed comorbidity"
+label define immunosuppressed 0 "0 Not immunosuppressed" 1 "1 Yes immunosuppressed"
+label values immunosuppressed immunosuppressed
+
+*remove unneccessary datapoints
+drop pasthistoryid pasthistoryoffset-pasthistoryvaluetext
+
+
+*save it as stata data file
+save "immunocompromised datafile.dta", replace
+
+clear
+
+
+****************************************
+***Create hemoptysis admission dx variable
+****************************************
+
+*1st import the datafile
+import delimited "eicu-collaborative-research-database-2.0\admissionDx.csv"
+
+*next generate dummy variable for hemoptysis
+
+generate hemoptysis = .
+replace hemoptysis = 1 if admitdxname == "Hemorrhage/hemoptysis, pulmonary"
+replace hemoptysis = 1 if admitdxtext == "Hemorrhage/hemoptysis, pulmonary"
+
+bysort patientunitstayid: fillmissing hemoptysis, with(max)
+
+*Keep only a single value for each hospitalization
+bysort patientunitstayid: keep if _n==_N
+
+*Change missing percbronch value to 0 
+replace hemoptysis = 0 if hemoptysis == .
+
+
+*label the variable
+label var hemoptysis "Primary admission diagnosis of hemoptysis"
+label define hemoptysis 0 "0 No hemoptysis" 1 "1 Yes hemoptysis"
+label values hemoptysis hemoptysis
+
+*remove unneccessary datapoints
+drop admissiondxid admitdxenteredoffset-admitdxtext
+
+
+*save it as stata data file
+save "hemoptysis datafile.dta", replace
+
+clear
+
+
+*****************************************************
+***********************To create analytic data set***
+*****************************************************
+
+*To open data set*
+use "patient_filtered.dta"
+
+*Merge in immunocompromised
+merge 1:1 patientunitstayid using "immunocompromised datafile.dta"
+
+drop _merge
+
+*Merge hemoptysis variable
+merge 1:1 patientunitstayid using "hemoptysis datafile.dta"
+
+drop _merge
+
+* Create variable that counts hospitalizations by hospital
+egen n_hospital = count(patientunitstayid), by (hospitalid)
+
+* Generate variables for percent receiving IMV
+gen percimv = hospital_count_imv_hosps / n_hospital
+
+* Only keeps observations that received IMV (as identified by 3 or more methods)*
+keep if imv_3ways==1
+
+* Drops observations from hospitals with fewer than 25 IMV cases
+drop if hospital_count_imv_hosps<25
+
+* Create variable that counts bronchoscopies by hospital
+egen n_bronch = total(bronc_2ways==1), by(hospitalid)
+
+* Generate variables for percent receiving bronchoscopy
+gen percbronch = n_bronch / hospital_count_imv_hosps
+
+
+********************************
+***DATA CLEANING for analysis***
+********************************
+
+*Need to fix age variable (coded with >85; will assume 85 for these few)*
+ destring age, generate(age2) ignore(`">"')
+ 
+*Generate a gender variable coded in 1/0 format*
+ generate male = 1 if gender=="Male"
+ replace male = 0 if gender=="Female"
+
+*Condense ethnicity categories into 4 to display in table*
+*Other will include missing values*
+generate ethn4=4
+replace ethn4=1 if ethnicity=="Caucasian"
+replace ethn4=2 if ethnicity=="African American"
+replace ethn4=3 if ethnicity=="Hispanic"
+label define ethn_labels 1 "White" 2 "Black" 3 "Hispanic" 4 "Other" 99 "Refused"
+label values ethn4 ethn_labels
+
+*Condense unit types into mixed/medical/surgical*
+generate unittype3=.
+replace unittype3=1 if unittype=="Med-Surg ICU"
+replace unittype3=1 if unittype=="CCU-CTICU"
+replace unittype3=2 if unittype=="Cardiac ICU"
+replace unittype3=2 if unittype=="MICU"
+replace unittype3=2 if unittype=="Neuro ICU"
+replace unittype3=3 if unittype=="CSICU"
+replace unittype3=3 if unittype=="CTICU"
+replace unittype3=3 if unittype=="SICU"
+
+label define unit_labels3 1 "med surg" 2 "medical" 3 "surgical" 
+label values unittype3 unit_labels3
+
+
+***Condense unit type into 5 categories:
+*1 Mixed, 2 medical, 3 surgical, 4 ccu, 5 nicu
+generate unittype5=.
+replace unittype5=1 if unittype=="Med-Surg ICU"
+replace unittype5=1 if unittype=="CCU-CTICU"
+replace unittype5=2 if unittype=="MICU"
+replace unittype5=3 if unittype=="CSICU"
+replace unittype5=3 if unittype=="CTICU"
+replace unittype5=3 if unittype=="SICU"
+replace unittype5=4 if unittype=="Cardiac ICU"
+replace unittype5=5 if unittype=="Neuro ICU"
+
+label define unit_labels5 1 "Mixed medical-surgical" 2 "Medical" 3 "Surgical" ///
+	4 "Cardiac" 5 "Neuro ICU" 
+label values unittype5 unit_labels5
+
+*Create variable for number of region that is numeric
+generate region1 = .
+replace region1 = 1 if region == "Northeast"
+replace region1 = 2 if region == "Midwest"
+replace region1 = 3 if region == "South"
+replace region1 = 4 if region == "West"
+label var region1 "Region (numeric format)"
+label define region1 1 "1 Northeast" 2 "2 Midwest" 3 "3 South" 4 "4 West" 
+label values region1 region1
+tab region1 region
+
+
+*Create variable for number of IMV cases per hospital
+*Group into <250, 250-499, 500-749, >750
+generate imv_cases = .
+replace imv_cases = 1 if hospital_count_imv_hosps>=25 & hospital_count_imv_hosps<=249
+replace imv_cases = 2 if hospital_count_imv_hosps>=250 & hospital_count_imv_hosps<=499
+replace imv_cases = 3 if hospital_count_imv_hosps>=500 & hospital_count_imv_hosps<=749
+replace imv_cases = 4 if hospital_count_imv_hosps>=750 & hospital_count_imv_hosps<.
+label var imv_cases "IMV hospitalizations by hospital"
+label define imvcaselabel 1 "1: 25-249" 2 "2: 250-499" 3 "3: 500-749" 4 "4: 750+" 
+label values imv_cases imvcaselabel
+
+*Create variable for number of hospital beds that is numeric
+*Group into <250, 250-499, 500-749, >750
+generate hosp_beds = .
+replace hosp_beds = 1 if numbedscategory == "<100"
+replace hosp_beds = 2 if numbedscategory == "100 - 249"
+replace hosp_beds = 3 if numbedscategory == "250 - 499"
+replace hosp_beds = 4 if numbedscategory == ">= 500"
+label var hosp_beds "Number of beds in hospital"
+label define hosp_beds 1 "1: <100" 2 "2: 100 - 249" 3 "3: 250 - 499" 4 "4: >= 500"
+label values hosp_beds hosp_beds
+tab hosp_beds numbedscategory
+
+*Make mortality into 1/0*
+*If missing, assume alive*
+generate dead=0
+replace dead=1 if actualhospitalmortality=="EXPIRED"
+
+* Create variable for hospital level mortality
+egen total_dead = total(dead==1), by (hospitalid)
+
+gen hosp_mort = total_dead / hospital_count_imv_hosps
+label var hosp_mort "Mortality by hospital"
+
+
+********************
+**Create quartiles for illness severity
+********************
+xtile apachequartile = apachescore, nq(4)
+sum apachescore, d
+
+label define quartileapach 1 "<50" 2 "50-68" 3 "68-90" 4 ">90" 
+label values apachequartile quartileapach
+tab apachequartile
+
+
+********************
+**Save dataset
+********************
+save "datafile.dta", replace
+
+
+********************
+**Create table1
+********************
+table1_mc, by(bronc_2ways) total(before) saving("table 1.xlxs", replace) ///
+vars(male bin %4.1f \ ///
+	age2 conts %4.0f \ ///
+	ethn4 cat %4.1f \ ///
+	region1 cat %4.1f \ ///
+	hosp_beds cat %4.1f \ ///
+	imv_cases cat %4.1f \ ///
+	teachingstatus cat %4.1f \ ///
+	unittype5 cat %4.1f \ ///
+	apachescore conts %4.0f \ ///
+	actualhospitallos conts %4.1f \ ///
+	dead cat %4.1f )
+	
+************************************************************
+***********************Initial Caterpillar plot
+************************************************************
+	
+clear
+use "dataset.dta"
+
+
+* count number of IMVs by hospital
+bysort hospitalid: egen imv_sum_byhospital = sum(imv_3ways)
+
+* count number of broncoscopies by hospital
+bysort hospitalid: egen bronc_sum_byhospital = sum(bronc_2ways)
+
+* collapse hospitals
+collapse percbronc imv_sum_byhospital bronc_sum_byhospital, by(hospitalid)
+
+gen p = . 
+gen l = . 
+gen u = . 
+
+quietly forval i = 1/`=_N' { 
+    cii proportions `= imv_sum_byhospital[`i']' `= bronc_sum_byhospital[`i']' 
+    replace p = r(proportion) in `i' 
+    replace u = r(ub) in `i' 
+    replace l = r(lb) in `i' 
+} 
+
+sort p u
+
+egen p_rank  = rank(p), unique
+
+twoway scatter p p_rank 
+twoway rcap u l p_rank, lstyle(ci) || ///
+scatter p p_rank, mstyle(p1)
+
+
+************************************************************
+***********************MULTI-LEVEL MODEL1: Empty model
+************************************************************
+clear
+use "dataset.dta"
+
+* count number of IMVs by hospital
+bysort hospitalid: egen imv_sum_byhospital = sum(imv_3ways)
+
+melogit bronc_2ways  ///
+	|| hospitalid: , or
+estat icc
+
+*Median odds ratio calculations
+gen mor = exp((sqrt(2*( 1.777315)))*0.6745)    
+gen morl = exp((sqrt(2*( 1.289245  )))*0.6745)   
+gen moru = exp((sqrt(2*(2.450155)))*0.6745)  
+
+*Median OR: 3.57 (2.95-4.45)
+*Bronch range: 0.00-0.20
+
+predict p_full, pr
+
+		* SMS
+		predict fe, xb 
+		predict se_xb, stdp 
+		predict re, reffects reses(rintse)
+
+		gen pred_p = invlogit(fe+re)
+						
+		gen pred_p_lowerCI=invlogit(fe+re-invnormal(0.975)*sqrt(se_xb^2 + rintse^2)) 
+		gen pred_p_upperCI=invlogit(fe+re+invnormal(0.975)*sqrt(se_xb^2 + rintse^2)) 
+
+		collapse (mean) pred_p pred_p_lowerCI pred_p_upperCI , by(hospitalid)
+		
+		sort pred_p pred_p_upperCI
+		egen pred_p_rank  = rank(pred_p), unique
+		sort *rank 
+
+		sum pred_p, meanonly
+		local a = r(mean)
+		twoway scatter pred_p pred_p_rank, yline(`a') 
+		twoway rcap pred_p_upperCI pred_p_lowerCI pred_p_rank, lstyle(ci) || ///
+				scatter pred_p pred_p_rank, mstyle(p1) ///
+				legend(off) xtitle("") xlabel("") ///
+				plotregion(fcolor(white)) graphregion(fcolor(white)) ///
+			    ylabel(0(0.1)0.4) ylabel(, nogrid)
+				
+		graph save "Graph" "fig1_mlm.gph", replace	
+/*
+
+collapse imv_sum_byhospital (sum) expected_bronc = p_full, by(hospitalid)
+
+gen perc_bronch = .
+replace perc_bronch = expected_bronc/imv_sum_byhospital
+
+sort perc_bronch
+gen rank = _n
+twoway scatter perc_bronch rank 
+*/
+
+
+
+
+************************************************************
+***********************MULTI-LEVEL MODEL2: patient characteristics
+************************************************************
+clear
+
+use "dataset.dta"
+
+* count number of IMVs by hospital
+bysort hospitalid: egen imv_sum_byhospital = sum(imv_3ways)
+
+melogit bronc age2 apachescore immunosuppressed hemoptysis || hospitalid:, or
+estat icc
+
+*Median odds ratio calculations
+gen mor = exp((sqrt(2*( 1.71293)))*0.6745)    
+gen morl = exp((sqrt(2*(1.229228)))*0.6745)   
+gen moru = exp((sqrt(2*( 2.386969)))*0.6745)  
+
+*Median OR: 3.48 (2.88-4.37) 
+*Bronch range: 0.00-0.18
+
+predict p_full, pr
+
+		* SMS
+		predict fe, xb 
+		predict se_xb, stdp 
+		predict re, reffects reses(rintse)
+
+		gen pred_p = invlogit(fe+re)
+						
+		gen pred_p_lowerCI=invlogit(fe+re-invnormal(0.975)*sqrt(se_xb^2 + rintse^2)) 
+		gen pred_p_upperCI=invlogit(fe+re+invnormal(0.975)*sqrt(se_xb^2 + rintse^2)) 
+
+		collapse (mean) pred_p pred_p_lowerCI pred_p_upperCI , by(hospitalid)
+		
+		sort pred_p pred_p_upperCI
+		egen pred_p_rank  = rank(pred_p), unique
+		sort *rank 
+
+		sum pred_p, meanonly
+		local a = r(mean)
+		twoway scatter pred_p pred_p_rank, yline(`a') 
+		twoway rcap pred_p_upperCI pred_p_lowerCI pred_p_rank, lstyle(ci) || ///
+				scatter pred_p pred_p_rank, mstyle(p1) ///
+				legend(off) xtitle("") xlabel("") ///
+				plotregion(fcolor(white)) graphregion(fcolor(white)) ///
+			    yscale(r(0(0.1) 0.4)) ylabel(, nogrid) ylabel("")
+				
+		graph save "Graph" "fig2_mlm.gph", replace	
+/*			
+collapse imv_sum_byhospital (sum) expected_bronc = p_full, by(hospitalid)
+
+gen perc_bronch = .
+replace perc_bronch = expected_bronc/imv_sum_byhospital
+
+sort perc_bronch
+gen rank = _n
+twoway scatter perc_bronch rank 
+*/
+
+
+************************************************************
+***********************MULTI-LEVEL MODEL3: patient and hospital characteristics
+************************************************************
+clear
+
+use "dataset.dta"
+
+* count number of IMVs by hospital
+bysort hospitalid: egen imv_sum_byhospital = sum(imv_3ways)
+
+melogit bronc_2ways age2 apachescore immunosuppressed hemoptysis ///
+	i.hosp_beds i.imv_cases i.region1 ///
+	|| hospitalid: , or
+	
+estat icc
+
+*Median odds ratio calculations
+gen mor = exp((sqrt(2*( 1.304107)))*0.6745)    
+gen morl = exp((sqrt(2*(.8984106)))*0.6745)   
+gen moru = exp((sqrt(2*( 1.893004)))*0.6745)  
+
+*Median OR: 2.97 (2.47-3.72) 
+*Bronch range: 0.00-0.19
+predict p_full, pr
+
+		* SMS
+		predict fe, xb 
+		predict se_xb, stdp 
+		predict re, reffects reses(rintse)
+
+		gen pred_p = invlogit(fe+re)
+						
+		gen pred_p_lowerCI=invlogit(fe+re-invnormal(0.975)*sqrt(se_xb^2 + rintse^2)) 
+		gen pred_p_upperCI=invlogit(fe+re+invnormal(0.975)*sqrt(se_xb^2 + rintse^2)) 
+
+		collapse (mean) pred_p pred_p_lowerCI pred_p_upperCI , by(hospitalid)
+		
+		sort pred_p pred_p_upperCI
+		egen pred_p_rank  = rank(pred_p), unique
+		sort *rank 
+
+		sum pred_p, meanonly
+		local a = r(mean)
+		twoway scatter pred_p pred_p_rank, yline(`a') 
+		twoway rcap pred_p_upperCI pred_p_lowerCI pred_p_rank, lstyle(ci) || 				///
+				scatter pred_p pred_p_rank, mstyle(p1) ///
+				legend(off) xtitle("") xlabel("") ///
+				plotregion(fcolor(white)) graphregion(fcolor(white)) ///
+			    yscale(r(0(0.1) 0.4)) ylabel(, nogrid) ylabel("")
+					
+		graph save "Graph" "fig3_mlm.gph", replace	
+
+
+		
+********************		
+** COMBINE GRAPHS **
+********************
+graph combine 	"fig1_mlm.gph" 	///
+		"fig2_mlm.gph" 	///
+		"fig3_mlm.gph", ///
+		rows(1) fysize(60) iscale(0.5) imargin(2 2 2 2) graphregion(color(white))	
+			
+graph save "Graph" "combined_figure.eps", replace	
+		
