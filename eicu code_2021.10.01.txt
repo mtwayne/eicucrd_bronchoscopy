@@ -1113,4 +1113,12 @@ graph combine 	"fig1_mlm.gph" 	///
 		rows(1) fysize(60) iscale(0.5) imargin(2 2 2 2) graphregion(color(white))	
 			
 graph save "Graph" "combined_figure.eps", replace	
-		
+	
+********************		
+* ASSOCIATION OF BRONCHOSCOPY WITH MORTALITY
+*******************
+use "datafile.dta"
+
+melogit dead bronc_2ways age2 apachescore immunosuppressed hemoptysis ///
+	i.hosp_beds i.imv_cases i.region1 ///
+	|| hospitalid: , or
