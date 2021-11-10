@@ -617,22 +617,22 @@ patient_filtered_vent %>%
 
 
 
-
 ************************************************************
-*********************E-ICU BRONCHOSCOPY STATA CODE**********
+*********************E-ICU BRONCHOSCOPY ANALYSIS********************
 ************************************************************
 *** https://eicu-crd.mit.edu/
 ***
 *** Author: Max Wayne
 ***
-*** Last modified: 2021-10-01
+*** Last modified: 2021-01/10
+*** Stata version: 17.0
 ***
 ****************************************
 ***Create immunosuppressed variable
 ****************************************
 
 *1st import the datafile
-import delimited "eicu-collaborative-research-database-2.0\pastHistory.csv"
+import delimited "pastHistory.csv"
 
 *next generate dummy variable for immunosuppressed
 *replace if pasthistory text reports immunosuppressed condition
@@ -689,7 +689,7 @@ clear
 ****************************************
 
 *1st import the datafile
-import delimited "eicu-collaborative-research-database-2.0\admissionDx.csv"
+import delimited "admissionDx.csv"
 
 *next generate dummy variable for hemoptysis
 
@@ -854,6 +854,7 @@ egen total_dead = total(dead==1), by (hospitalid)
 gen hosp_mort = total_dead / hospital_count_imv_hosps
 label var hosp_mort "Mortality by hospital"
 
+replace apachescore = . if apachescore == -1
 
 ********************
 **Create quartiles for illness severity
@@ -864,6 +865,7 @@ sum apachescore, d
 label define quartileapach 1 "<50" 2 "50-68" 3 "68-90" 4 ">90" 
 label values apachequartile quartileapach
 tab apachequartile
+
 
 
 ********************
@@ -893,7 +895,7 @@ vars(male bin %4.1f \ ///
 ************************************************************
 	
 clear
-use "dataset.dta"
+use "datafile.dta"
 
 
 * count number of IMVs by hospital
@@ -929,7 +931,7 @@ scatter p p_rank, mstyle(p1)
 ***********************MULTI-LEVEL MODEL1: Empty model
 ************************************************************
 clear
-use "dataset.dta"
+use "datafile.dta"
 
 * count number of IMVs by hospital
 bysort hospitalid: egen imv_sum_byhospital = sum(imv_3ways)
@@ -994,7 +996,7 @@ twoway scatter perc_bronch rank
 ************************************************************
 clear
 
-use "dataset.dta"
+use "datafile.dta"
 
 * count number of IMVs by hospital
 bysort hospitalid: egen imv_sum_byhospital = sum(imv_3ways)
@@ -1003,11 +1005,11 @@ melogit bronc age2 apachescore immunosuppressed hemoptysis || hospitalid:, or
 estat icc
 
 *Median odds ratio calculations
-gen mor = exp((sqrt(2*( 1.71293)))*0.6745)    
-gen morl = exp((sqrt(2*(1.229228)))*0.6745)   
-gen moru = exp((sqrt(2*( 2.386969)))*0.6745)  
+gen mor = exp((sqrt(2*(1.694444)))*0.6745)    
+gen morl = exp((sqrt(2*( 1.215476)))*0.6745)   
+gen moru = exp((sqrt(2*(  2.362153)))*0.6745)  
 
-*Median OR: 3.48 (2.88-4.37) 
+*Median OR: 3.46; 95% CI 2.86-4.33 
 *Bronch range: 0.00-0.18
 
 predict p_full, pr
@@ -1055,24 +1057,24 @@ twoway scatter perc_bronch rank
 ************************************************************
 clear
 
-use "dataset.dta"
+use "datafile.dta"
 
 * count number of IMVs by hospital
 bysort hospitalid: egen imv_sum_byhospital = sum(imv_3ways)
 
 melogit bronc_2ways age2 apachescore immunosuppressed hemoptysis ///
-	i.hosp_beds i.imv_cases i.region1 ///
+	i.hosp_beds i.imv_cases i.region1 i.unittype5 ///
 	|| hospitalid: , or
 	
 estat icc
 
 *Median odds ratio calculations
-gen mor = exp((sqrt(2*( 1.304107)))*0.6745)    
-gen morl = exp((sqrt(2*(.8984106)))*0.6745)   
-gen moru = exp((sqrt(2*( 1.893004)))*0.6745)  
+gen mor = exp((sqrt(2*(  1.249216)))*0.6745)    
+gen morl = exp((sqrt(2*(  .8580643 )))*0.6745)   
+gen moru = exp((sqrt(2*(  1.818676)))*0.6745)  
 
-*Median OR: 2.97 (2.47-3.72) 
-*Bronch range: 0.00-0.19
+*Median OR: 2.90 (2.42-3.62) 
+*Bronch range: 0.01-0.19
 predict p_full, pr
 
 		* SMS
@@ -1100,7 +1102,7 @@ predict p_full, pr
 				plotregion(fcolor(white)) graphregion(fcolor(white)) ///
 			    yscale(r(0(0.1) 0.4)) ylabel(, nogrid) ylabel("")
 					
-		graph save "Graph" "fig3_mlm.gph", replace	
+		graph save "fig3_mlm.gph", replace	
 
 
 		
@@ -1113,12 +1115,180 @@ graph combine 	"fig1_mlm.gph" 	///
 		rows(1) fysize(60) iscale(0.5) imargin(2 2 2 2) graphregion(color(white))	
 			
 graph save "Graph" "combined_figure.eps", replace	
-	
+		
+
+
 ********************		
 * ASSOCIATION OF BRONCHOSCOPY WITH MORTALITY
 *******************
+clear
 use "datafile.dta"
 
 melogit dead bronc_2ways age2 apachescore immunosuppressed hemoptysis ///
-	i.hosp_beds i.imv_cases i.region1 ///
+	i.hosp_beds i.imv_cases i.region1 i.unittype5 ///
 	|| hospitalid: , or
+	
+
+	
+	
+***********************************
+*Sensitivity analysis (excluding hospitals that performed 0 bronchoscopies)
+***********************************
+clear
+
+use "datafile.dta"
+
+* count number of bronchoscopies by hospital
+bysort hospitalid: egen bronch_byhospital = sum(bronc_2ways)
+
+* drop if no bronchoscopies performed at hospital
+drop if bronch_byhospital == 0
+
+* multilevel model
+melogit bronc_2ways age2 apachescore immunosuppressed hemoptysis ///
+	i.hosp_beds i.imv_cases i.region1 i.unittype5 ///
+	|| hospitalid: , or
+
+*Median odds ratio calculations
+di exp((sqrt(2*(.7035136  )))*0.6745)    
+di exp((sqrt(2*(  .4871904 )))*0.6745)    
+di exp((sqrt(2*( 1.015889)))*0.6745)    
+
+* ICC calculation
+estat icc
+
+* To obtain bronchoscopy range estimates
+predict p_full, pr
+
+		predict fe, xb 
+		predict se_xb, stdp 
+		predict re, reffects reses(rintse)
+
+		gen pred_p = invlogit(fe+re)
+						
+		gen pred_p_lowerCI=invlogit(fe+re-invnormal(0.975)*sqrt(se_xb^2 + rintse^2)) 
+		gen pred_p_upperCI=invlogit(fe+re+invnormal(0.975)*sqrt(se_xb^2 + rintse^2)) 
+
+		collapse (mean) pred_p pred_p_lowerCI pred_p_upperCI , by(hospitalid)
+		
+		sort pred_p pred_p_upperCI
+		egen pred_p_rank  = rank(pred_p), unique
+		sort *rank 
+
+***********************************
+*Sensitivity analysis (ARDS)
+***********************************
+clear
+import delimited "diagnosis.csv"
+
+
+generate ards = .
+replace ards = 1 if diagnosisstring == "pulmonary|respiratory failure|ARDS"
+drop if ards == .
+drop icd9code diagnosisstring diagnosisoffset activeupondischarge
+
+*remove duplicates
+sort patientunitstayid 
+quietly by patientunitstayid: gen dup = cond(_N==1,0,_n)
+drop if dup>1
+
+*label the variable
+label var ards "ARDS"
+label define hemoptysis 0 "0 No ARDS" 1 "1 Yes ARDS"
+label values ards ards
+
+
+
+save "ards.dta", replace
+
+clear
+
+use "datafile.dta"
+
+*Merge in ards
+merge 1:1 patientunitstayid using "ards.dta"
+drop _merge
+
+keep if ards == 1
+
+tab bronc_2ways
+
+
+* Create variable that counts hospitalizations by hospital among ards patients
+egen n_hospital_ards = count(patientunitstayid), by (hospitalid)
+
+* Drops observations from hospitals with fewer than 25 IMV cases
+drop if n_hospital_ards<25
+
+* Create variable that counts bronchoscopies by hospital among ards patients
+egen n_bronch_ards = total(bronc_2ways==1), by(hospitalid)
+
+* Generate variables for percent receiving bronchoscopy
+gen percbronch_ards = n_bronch_ards / n_hospital_ards
+
+collapse percbronch_ards n_bronch_ards n_hospital_ards, by(hospitalid)
+egen ards_bronch_rank  = rank(percbronch_ards), unique
+sort *rank
+
+sum percbronch_ards, d
+*1244 ARDS patients -> 18.7% underwent bronchoscopy
+*16 hospitals -- 0-50%
+
+
+
+***********************************
+*Sensitivity analysis (immunosupressed)
+***********************************
+clear
+use "datafile.dta"
+
+
+keep if immunosuppressed == 1
+
+tab bronc_2ways
+
+* Create variable that counts hospitalizations by hospital among immunosuppressed
+egen n_hospital_immun = count(patientunitstayid), by (hospitalid)
+
+* Drops observations from hospitals with fewer than 25 IMV cases
+drop if n_hospital_immun<25
+
+* Create variable that counts bronchoscopies by hospital among ards patients
+egen n_bronch_immun = total(bronc_2ways==1), by(hospitalid)
+
+* Generate variables for percent receiving bronchoscopy
+gen percbronch_immun = n_bronch_immun / n_hospital_immun
+
+collapse percbronch_immun n_bronch_immun n_hospital_immun, by(hospitalid)
+egen immun_bronch_rank  = rank(percbronch_immun), unique
+sort *rank
+
+sum percbronch_immun, d
+
+
+***********************************
+*Sensitivity analysis (hemoptysis)
+***********************************
+clear
+use "datafile.dta"
+
+
+keep if hemoptysis == 1
+
+tab bronc_2ways
+
+* Create variable that counts hospitalizations by hospital among hemoptysis patients
+egen n_hospital_hemop = count(patientunitstayid), by (hospitalid)
+
+* Create variable that counts bronchoscopies by hospital among hemoptysis patients
+egen n_bronch_hemop = total(bronc_2ways==1), by(hospitalid)
+
+* Generate variables for percent receiving bronchoscopy
+gen percbronch_hemop = n_bronch_hemop / n_hospital_hemop
+
+collapse percbronch_hemop n_bronch_hemop n_hospital_hemop, by(hospitalid)
+egen hemop_bronch_rank  = rank(percbronch_hemop), unique
+sort *rank
+
+sum percbronch_hemop, d
+
