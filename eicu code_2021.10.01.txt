@@ -624,7 +624,7 @@ patient_filtered_vent %>%
 ***
 *** Author: Max Wayne
 ***
-*** Last modified: 2021-01/10
+*** Last modified: 2021-11-18
 *** Stata version: 17.0
 ***
 ****************************************
@@ -632,7 +632,7 @@ patient_filtered_vent %>%
 ****************************************
 
 *1st import the datafile
-import delimited "pastHistory.csv"
+import delimited "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\eicu-collaborative-research-database-2.0\pastHistory.csv"
 
 *next generate dummy variable for immunosuppressed
 *replace if pasthistory text reports immunosuppressed condition
@@ -679,7 +679,7 @@ drop pasthistoryid pasthistoryoffset-pasthistoryvaluetext
 
 
 *save it as stata data file
-save "immunocompromised datafile.dta", replace
+save "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\immunocompromised datafile.dta", replace
 
 clear
 
@@ -689,7 +689,7 @@ clear
 ****************************************
 
 *1st import the datafile
-import delimited "admissionDx.csv"
+import delimited "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\eicu-collaborative-research-database-2.0\admissionDx.csv"
 
 *next generate dummy variable for hemoptysis
 
@@ -702,7 +702,7 @@ bysort patientunitstayid: fillmissing hemoptysis, with(max)
 *Keep only a single value for each hospitalization
 bysort patientunitstayid: keep if _n==_N
 
-*Change missing percbronch value to 0 
+*Change missing value to 0 
 replace hemoptysis = 0 if hemoptysis == .
 
 
@@ -716,9 +716,41 @@ drop admissiondxid admitdxenteredoffset-admitdxtext
 
 
 *save it as stata data file
-save "hemoptysis datafile.dta", replace
+save "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\hemoptysis datafile.dta", replace
 
 clear
+
+
+****************************************
+***Create ARDS 
+****************************************
+clear
+import delimited "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\eicu-collaborative-research-database-2.0\diagnosis.csv"
+
+generate ards = .
+replace ards = 1 if diagnosisstring == "pulmonary|respiratory failure|ARDS"
+
+bysort patientunitstayid: fillmissing ards, with(max)
+
+*Keep only a single value for each hospitalization
+bysort patientunitstayid: keep if _n==_N
+
+*Change missing ards value to 0 
+replace ards = 0 if ards == .
+
+*remove unneccessary datapoints
+drop icd9code diagnosisstring diagnosisoffset activeupondischarge diagnosispriority diagnosisid
+
+*label the variable
+label var ards "ARDS"
+label define ards 0 "0 No ARDS" 1 "1 Yes ARDS"
+label values ards ards
+
+tab ards
+
+save "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\ards.dta", replace
+
+
 
 
 *****************************************************
@@ -726,15 +758,20 @@ clear
 *****************************************************
 
 *To open data set*
-use "patient_filtered.dta"
+use "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\STATA\patient_filtered.dta"
 
 *Merge in immunocompromised
-merge 1:1 patientunitstayid using "immunocompromised datafile.dta"
+merge 1:1 patientunitstayid using "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\immunocompromised datafile.dta"
 
 drop _merge
 
 *Merge hemoptysis variable
-merge 1:1 patientunitstayid using "hemoptysis datafile.dta"
+merge 1:1 patientunitstayid using "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\hemoptysis datafile.dta"
+
+drop _merge
+
+*Merge in ards
+merge 1:1 patientunitstayid using "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\ards.dta"
 
 drop _merge
 
@@ -871,7 +908,7 @@ tab apachequartile
 ********************
 **Save dataset
 ********************
-save "datafile.dta", replace
+save "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\datafile.dta", replace
 
 
 ********************
@@ -890,12 +927,22 @@ vars(male bin %4.1f \ ///
 	actualhospitallos conts %4.1f \ ///
 	dead cat %4.1f )
 	
+********************
+**Create table2
+********************
+table1_mc, by(bronc_2ways) total(before) catrowperc saving("table 2.xlxs", replace) ///
+vars(region1 cat %4.1f \ ///
+	hosp_beds cat %4.1f \ ///
+	imv_cases cat %4.1f \ ///
+	teachingstatus cat %4.1f \ ///
+	unittype5 cat %4.1f)
+	
 ************************************************************
 ***********************Initial Caterpillar plot
 ************************************************************
 	
 clear
-use "datafile.dta"
+use "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\datafile.dta"
 
 
 * count number of IMVs by hospital
@@ -931,7 +978,7 @@ scatter p p_rank, mstyle(p1)
 ***********************MULTI-LEVEL MODEL1: Empty model
 ************************************************************
 clear
-use "datafile.dta"
+use "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\datafile.dta"
 
 * count number of IMVs by hospital
 bysort hospitalid: egen imv_sum_byhospital = sum(imv_3ways)
@@ -975,7 +1022,7 @@ predict p_full, pr
 				plotregion(fcolor(white)) graphregion(fcolor(white)) ///
 			    ylabel(0(0.1)0.4) ylabel(, nogrid)
 				
-		graph save "Graph" "fig1_mlm.gph", replace	
+		graph save "Graph" "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\fig1_mlm.gph", replace	
 /*
 
 collapse imv_sum_byhospital (sum) expected_bronc = p_full, by(hospitalid)
@@ -996,20 +1043,21 @@ twoway scatter perc_bronch rank
 ************************************************************
 clear
 
-use "datafile.dta"
+use "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\datafile.dta"
 
 * count number of IMVs by hospital
 bysort hospitalid: egen imv_sum_byhospital = sum(imv_3ways)
 
-melogit bronc age2 apachescore immunosuppressed hemoptysis || hospitalid:, or
+melogit bronc age2 apachescore immunosuppressed hemoptysis ards || hospitali:, or
 estat icc
 
 *Median odds ratio calculations
-gen mor = exp((sqrt(2*(1.694444)))*0.6745)    
-gen morl = exp((sqrt(2*( 1.215476)))*0.6745)   
-gen moru = exp((sqrt(2*(  2.362153)))*0.6745)  
+di exp((sqrt(2*( 1.595291)))*0.6745)    
+di exp((sqrt(2*(   1.142862 )))*0.6745)   
+di exp((sqrt(2*( 2.226824)))*0.6745)  
 
-*Median OR: 3.46; 95% CI 2.86-4.33 
+*Median OR: 3.34; 95% CI 2.77-4.15
+*ICC 0.33
 *Bronch range: 0.00-0.18
 
 predict p_full, pr
@@ -1039,7 +1087,7 @@ predict p_full, pr
 				plotregion(fcolor(white)) graphregion(fcolor(white)) ///
 			    yscale(r(0(0.1) 0.4)) ylabel(, nogrid) ylabel("")
 				
-		graph save "Graph" "fig2_mlm.gph", replace	
+		graph save "Graph" "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\fig2_mlm.gph", replace	
 /*			
 collapse imv_sum_byhospital (sum) expected_bronc = p_full, by(hospitalid)
 
@@ -1057,24 +1105,24 @@ twoway scatter perc_bronch rank
 ************************************************************
 clear
 
-use "datafile.dta"
+use "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\datafile.dta"
 
 * count number of IMVs by hospital
 bysort hospitalid: egen imv_sum_byhospital = sum(imv_3ways)
 
-melogit bronc_2ways age2 apachescore immunosuppressed hemoptysis ///
-	i.hosp_beds i.imv_cases i.region1 i.unittype5 ///
+melogit bronc_2ways age2 apachescore immunosuppressed hemoptysis ards ///
+	i.hosp_beds i.imv_cases i.region1 i.unittype5 teachingstatus ///
 	|| hospitalid: , or
 	
 estat icc
 
 *Median odds ratio calculations
-gen mor = exp((sqrt(2*(  1.249216)))*0.6745)    
-gen morl = exp((sqrt(2*(  .8580643 )))*0.6745)   
-gen moru = exp((sqrt(2*(  1.818676)))*0.6745)  
+di exp((sqrt(2*(  1.184794)))*0.6745)    
+di exp((sqrt(2*(  .8141862 )))*0.6745)   
+di exp((sqrt(2*(   1.724099)))*0.6745)  
 
-*Median OR: 2.90 (2.42-3.62) 
-*Bronch range: 0.01-0.19
+*Median OR: 2.82 (95%CI: 2.36-3.50)
+*Bronch range: 0.00-0.19
 predict p_full, pr
 
 		* SMS
@@ -1102,19 +1150,19 @@ predict p_full, pr
 				plotregion(fcolor(white)) graphregion(fcolor(white)) ///
 			    yscale(r(0(0.1) 0.4)) ylabel(, nogrid) ylabel("")
 					
-		graph save "fig3_mlm.gph", replace	
+		graph save "Graph" "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\fig3_mlm.gph", replace	
 
 
 		
 ********************		
 ** COMBINE GRAPHS **
 ********************
-graph combine 	"fig1_mlm.gph" 	///
-		"fig2_mlm.gph" 	///
-		"fig3_mlm.gph", ///
-		rows(1) fysize(60) iscale(0.5) imargin(2 2 2 2) graphregion(color(white))	
+graph combine 	"C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\fig1_mlm.gph" 	///
+				"C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\fig2_mlm.gph" 	///
+				"C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\fig3_mlm.gph", ///
+				rows(1) fysize(60) iscale(0.5) imargin(2 2 2 2) graphregion(color(white))	
 			
-graph save "Graph" "combined_figure.eps", replace	
+graph save "Graph" "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\combined_figure.eps", replace	
 		
 
 
@@ -1122,10 +1170,10 @@ graph save "Graph" "combined_figure.eps", replace
 * ASSOCIATION OF BRONCHOSCOPY WITH MORTALITY
 *******************
 clear
-use "datafile.dta"
+use "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\datafile.dta"
 
-melogit dead bronc_2ways age2 apachescore immunosuppressed hemoptysis ///
-	i.hosp_beds i.imv_cases i.region1 i.unittype5 ///
+melogit dead bronc_2ways age2 apachescore immunosuppressed hemoptysis ards ///
+	i.hosp_beds i.imv_cases i.region1 i.unittype5 teachingstatus ///
 	|| hospitalid: , or
 	
 
@@ -1136,7 +1184,7 @@ melogit dead bronc_2ways age2 apachescore immunosuppressed hemoptysis ///
 ***********************************
 clear
 
-use "datafile.dta"
+use "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\datafile.dta"
 
 * count number of bronchoscopies by hospital
 bysort hospitalid: egen bronch_byhospital = sum(bronc_2ways)
@@ -1145,14 +1193,15 @@ bysort hospitalid: egen bronch_byhospital = sum(bronc_2ways)
 drop if bronch_byhospital == 0
 
 * multilevel model
-melogit bronc_2ways age2 apachescore immunosuppressed hemoptysis ///
-	i.hosp_beds i.imv_cases i.region1 i.unittype5 ///
+melogit bronc_2ways age2 apachescore immunosuppressed hemoptysis ards ///
+	i.hosp_beds i.imv_cases i.region1 i.unittype5 teachingstatus ///
 	|| hospitalid: , or
 
 *Median odds ratio calculations
-di exp((sqrt(2*(.7035136  )))*0.6745)    
-di exp((sqrt(2*(  .4871904 )))*0.6745)    
-di exp((sqrt(2*( 1.015889)))*0.6745)    
+***	2.22 (95% CI 1.94-2.61)
+di exp((sqrt(2*( .7010408   )))*0.6745)    
+di exp((sqrt(2*( .4856635 )))*0.6745)    
+di exp((sqrt(2*(1.011931)))*0.6745)    
 
 * ICC calculation
 estat icc
@@ -1178,36 +1227,8 @@ predict p_full, pr
 ***********************************
 *Sensitivity analysis (ARDS)
 ***********************************
-clear
-import delimited "diagnosis.csv"
 
-
-generate ards = .
-replace ards = 1 if diagnosisstring == "pulmonary|respiratory failure|ARDS"
-drop if ards == .
-drop icd9code diagnosisstring diagnosisoffset activeupondischarge
-
-*remove duplicates
-sort patientunitstayid 
-quietly by patientunitstayid: gen dup = cond(_N==1,0,_n)
-drop if dup>1
-
-*label the variable
-label var ards "ARDS"
-label define hemoptysis 0 "0 No ARDS" 1 "1 Yes ARDS"
-label values ards ards
-
-
-
-save "ards.dta", replace
-
-clear
-
-use "datafile.dta"
-
-*Merge in ards
-merge 1:1 patientunitstayid using "ards.dta"
-drop _merge
+use "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\datafile.dta"
 
 keep if ards == 1
 
@@ -1240,7 +1261,7 @@ sum percbronch_ards, d
 *Sensitivity analysis (immunosupressed)
 ***********************************
 clear
-use "datafile.dta"
+use "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\datafile.dta"
 
 
 keep if immunosuppressed == 1
@@ -1270,7 +1291,7 @@ sum percbronch_immun, d
 *Sensitivity analysis (hemoptysis)
 ***********************************
 clear
-use "datafile.dta"
+use "C:\Users\15134\Dropbox\My PC (DESKTOP-DMEH53U)\Desktop\eICU Bronchoscopy Project\Stata\datafile.dta"
 
 
 keep if hemoptysis == 1
@@ -1291,4 +1312,3 @@ egen hemop_bronch_rank  = rank(percbronch_hemop), unique
 sort *rank
 
 sum percbronch_hemop, d
-
